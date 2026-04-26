@@ -67,6 +67,7 @@ class Platform(Enum):
     WEIXIN = "weixin"
     BLUEBUBBLES = "bluebubbles"
     QQBOT = "qqbot"
+    TEAMS = "teams"
 
 
 @dataclass
@@ -321,7 +322,16 @@ class GatewayConfig:
                 config.extra.get("client_secret") or os.getenv("DINGTALK_CLIENT_SECRET")
             ):
                 connected.append(platform)
-        
+            # Teams uses client_id + client_secret + tenant_id (all required)
+            elif platform == Platform.TEAMS and (
+                config.extra.get("client_id") or os.getenv("TEAMS_CLIENT_ID")
+            ) and (
+                config.extra.get("client_secret") or os.getenv("TEAMS_CLIENT_SECRET")
+            ) and (
+                config.extra.get("tenant_id") or os.getenv("TEAMS_TENANT_ID")
+            ):
+                connected.append(platform)
+
         return connected
     
     def get_home_channel(self, platform: Platform) -> Optional[HomeChannel]:
@@ -1107,6 +1117,33 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
                 platform=Platform.DINGTALK,
                 chat_id=dingtalk_home,
                 name=os.getenv("DINGTALK_HOME_CHANNEL_NAME", "Home"),
+            )
+
+    # Microsoft Teams
+    teams_client_id = os.getenv("TEAMS_CLIENT_ID")
+    teams_client_secret = os.getenv("TEAMS_CLIENT_SECRET")
+    teams_tenant_id = os.getenv("TEAMS_TENANT_ID")
+    if teams_client_id and teams_client_secret and teams_tenant_id:
+        if Platform.TEAMS not in config.platforms:
+            config.platforms[Platform.TEAMS] = PlatformConfig()
+        config.platforms[Platform.TEAMS].enabled = True
+        config.platforms[Platform.TEAMS].extra.update({
+            "client_id": teams_client_id,
+            "client_secret": teams_client_secret,
+            "tenant_id": teams_tenant_id,
+        })
+        teams_port = os.getenv("TEAMS_PORT")
+        if teams_port:
+            try:
+                config.platforms[Platform.TEAMS].extra["port"] = int(teams_port)
+            except ValueError:
+                pass
+        teams_home = os.getenv("TEAMS_HOME_CHANNEL")
+        if teams_home:
+            config.platforms[Platform.TEAMS].home_channel = HomeChannel(
+                platform=Platform.TEAMS,
+                chat_id=teams_home,
+                name=os.getenv("TEAMS_HOME_CHANNEL_NAME", "Home"),
             )
 
     # Feishu / Lark
