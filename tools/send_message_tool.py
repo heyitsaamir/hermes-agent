@@ -224,6 +224,7 @@ def _handle_send(args):
         "email": Platform.EMAIL,
         "sms": Platform.SMS,
         "yuanbao": Platform.YUANBAO,
+        "teams": Platform.TEAMS,
     }
     platform = platform_map.get(platform_name)
     if not platform:
@@ -616,6 +617,8 @@ async def _send_to_platform(platform, pconfig, chat_id, message, thread_id=None,
             result = await _send_qqbot(pconfig, chat_id, chunk)
         elif platform == Platform.YUANBAO:
             result = await _send_yuanbao(chat_id, chunk)
+        elif platform == Platform.TEAMS:
+            result = await _send_teams(pconfig.extra, chat_id, chunk)
         else:
             result = {"error": f"Direct sending not yet implemented for {platform.value}"}
 
@@ -1584,6 +1587,41 @@ async def _send_yuanbao(chat_id, message, media_files=None):
         return await send_yuanbao_direct(adapter, chat_id, message, media_files=media_files)
     except Exception as e:
         return _error(f"Yuanbao send failed: {e}")
+
+
+async def _send_teams(extra, chat_id, message):
+    """Send via Microsoft Teams proactive messaging.
+
+    Uses the microsoft-teams-apps SDK's App.send() for proactive delivery.
+    Requires TEAMS_CLIENT_ID, TEAMS_CLIENT_SECRET, and TEAMS_TENANT_ID.
+    """
+    try:
+        from microsoft_teams.apps import App
+        from gateway.platforms.teams import _AiohttpBridgeAdapter
+    except ImportError:
+        return _error("microsoft-teams-apps not installed. Run: pip install microsoft-teams-apps")
+
+    client_id = (extra or {}).get("client_id") or os.getenv("TEAMS_CLIENT_ID", "")
+    client_secret = (extra or {}).get("client_secret") or os.getenv("TEAMS_CLIENT_SECRET", "")
+    tenant_id = (extra or {}).get("tenant_id") or os.getenv("TEAMS_TENANT_ID", "")
+
+    if not client_id or not client_secret or not tenant_id:
+        return _error("Teams not configured. Set TEAMS_CLIENT_ID, TEAMS_CLIENT_SECRET, and TEAMS_TENANT_ID.")
+
+    try:
+        # Standalone send — no aiohttp app needed, just need to avoid FastAPI import.
+        # Pass a bridge with a throwaway web.Application; we only call app.send().
+        from aiohttp import web as _web
+        app = App(
+            client_id=client_id, client_secret=client_secret, tenant_id=tenant_id,
+            http_server_adapter=_AiohttpBridgeAdapter(_web.Application()),
+        )
+        await app.initialize()
+        result = await app.send(chat_id, message)
+        return {"success": True, "platform": "teams", "chat_id": chat_id,
+                "message_id": getattr(result, "id", None)}
+    except Exception as e:
+        return _error(f"Teams send failed: {e}")
 
 
 # --- Registry ---

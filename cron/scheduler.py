@@ -360,6 +360,7 @@ def _deliver_result(job: dict, content: str, adapters=None, loop=None) -> Option
         "bluebubbles": Platform.BLUEBUBBLES,
         "qqbot": Platform.QQBOT,
         "yuanbao": Platform.YUANBAO,
+        "teams": Platform.TEAMS,
     }
 
     # Optionally wrap the content with a header/footer so the user knows this

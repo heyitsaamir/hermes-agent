@@ -455,6 +455,13 @@ PLATFORM_HINTS = {
         "image and is the WRONG path. Bare Unicode emoji in text is also not a substitute "
         "— when a sticker is the right response, use yb_send_sticker."
     ),
+    "teams": (
+        "You are in a Microsoft Teams conversation. Teams supports a subset of markdown: "
+        "**bold**, *italic*, ~~strikethrough~~, `inline code`, ```code blocks```, "
+        "[links](url), and numbered/bulleted lists. Tables and headers work in channel "
+        "posts but may not render in chat messages. Keep messages concise — Teams truncates "
+        "very long messages."
+    ),
 }
 
 # ---------------------------------------------------------------------------
