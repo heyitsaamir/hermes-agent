@@ -154,10 +154,6 @@ When the agent needs to run a potentially dangerous command, it sends an Adaptiv
 
 Clicking a button resolves the approval inline and replaces the card with the decision.
 
-### Image Attachments
-
-Images sent to the bot are automatically downloaded and passed to the agent as vision input.
-
 ---
 
 ## Production Deployment
