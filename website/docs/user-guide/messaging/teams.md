@@ -37,15 +37,22 @@ teams status --verbose
 
 ## Step 2: Expose Port 3978
 
-Teams cannot deliver messages to `localhost`. For local development, use [devtunnel](https://learn.microsoft.com/en-us/azure/developer/dev-tunnels/get-started):
+Teams cannot deliver messages to `localhost`. For local development, use any tunnel tool to get a public HTTPS URL:
 
 ```bash
+# devtunnel (Microsoft)
 devtunnel create hermes-bot --allow-anonymous
 devtunnel port create hermes-bot -p 3978 --protocol https
 devtunnel host hermes-bot
+
+# ngrok
+ngrok http 3978
+
+# cloudflared
+cloudflared tunnel --url http://localhost:3978
 ```
 
-Copy the `https://` URL from the output — you'll use it in the next step. Leave this terminal running while developing.
+Copy the `https://` URL from the output — you'll use it in the next step. Leave the tunnel running while developing.
 
 For production, point your bot's endpoint at your server's public domain instead (see [Production Deployment](#production-deployment)).
 
@@ -180,12 +187,12 @@ Make sure port 3978 (or your configured `TEAMS_PORT`) is reachable from the inte
 
 | Problem | Solution |
 |---------|----------|
-| `health` endpoint works but bot doesn't respond | Check that your devtunnel is still running and the bot's messaging endpoint matches the tunnel URL |
+| `health` endpoint works but bot doesn't respond | Check that your tunnel is still running and the bot's messaging endpoint matches the tunnel URL |
 | `KeyError: 'teams'` in logs | Restart the container — this is fixed in the current version |
 | Bot responds with auth errors | Verify `TEAMS_CLIENT_ID`, `TEAMS_CLIENT_SECRET`, and `TEAMS_TENANT_ID` are all set correctly |
 | `No inference provider configured` | Check that `ANTHROPIC_API_KEY` (or another provider key) is set in `~/.hermes/.env` |
 | Bot receives messages but ignores them | Your AAD object ID may not be in `TEAMS_ALLOWED_USERS`. Run `teams status --verbose` to find it |
-| Dev tunnel URL changes on restart | Devtunnel URLs are persistent if you created a named tunnel (`devtunnel create hermes-bot`). Re-run `devtunnel host hermes-bot` to reconnect |
+| Tunnel URL changes on restart | devtunnel URLs are persistent if you use a named tunnel (`devtunnel create hermes-bot`). ngrok and cloudflared generate a new URL each run unless you have a paid plan — update the bot endpoint with `teams app update` when it changes |
 | Teams shows "This bot is not responding" | The webhook returned an error. Check `docker logs hermes` for tracebacks |
 | `[teams] Failed to connect` in logs | The SDK failed to authenticate. Double-check your credentials and that the tenant ID matches the account you used in `teams login` |
 
