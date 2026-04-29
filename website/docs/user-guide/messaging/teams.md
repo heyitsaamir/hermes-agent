@@ -1,22 +1,20 @@
 ---
 sidebar_position: 5
 title: "Microsoft Teams"
-description: "Set up Hermes Agent as a Microsoft Teams bot using the Teams CLI"
+description: "Set up Hermes Agent as a Microsoft Teams bot"
 ---
 
 # Microsoft Teams Setup
 
-Connect Hermes Agent to Microsoft Teams as a bot. Teams requires a public HTTPS endpoint to deliver messages, so you'll need either a dev tunnel (local dev) or a public server (production).
+Connect Hermes Agent to Microsoft Teams as a bot. Unlike Slack's Socket Mode, Teams delivers messages by calling a **public HTTPS webhook**, so your instance needs a publicly reachable endpoint — either a dev tunnel (local dev) or a real domain (production).
 
-## Overview
+## How the Bot Responds
 
-| Component | Value |
-|-----------|-------|
-| **Library** | `microsoft-teams-apps` |
-| **Connection** | Webhook — public HTTPS endpoint required |
-| **Auth required** | Azure AD App ID + Client Secret + Tenant ID |
-| **Webhook port** | 3978 (default) |
-| **User identification** | AAD object IDs (find yours with `teams status --verbose`) |
+| Context | Behavior |
+|---------|----------|
+| **Personal chat (DM)** | Bot responds to every message. No @mention needed. |
+| **Group chat** | Bot responds to every message in the chat. |
+| **Channel** | Bot only responds when @mentioned (Teams delivers @mentions as regular messages with `<at>BotName</at>` tags, which Hermes strips automatically). |
 
 ---
 
@@ -29,7 +27,7 @@ npm install -g @microsoft/teams.cli@preview
 teams login
 ```
 
-To verify your login and find your own AAD object ID (useful for `TEAMS_ALLOWED_USERS`):
+To verify your login and find your own AAD object ID (needed for `TEAMS_ALLOWED_USERS`):
 
 ```bash
 teams status --verbose
@@ -39,15 +37,17 @@ teams status --verbose
 
 ## Step 2: Expose Port 3978
 
-Teams cannot reach `localhost`, so you need a tunnel. Install [devtunnel](https://learn.microsoft.com/en-us/azure/developer/dev-tunnels/get-started):
+Teams cannot deliver messages to `localhost`. For local development, use [devtunnel](https://learn.microsoft.com/en-us/azure/developer/dev-tunnels/get-started):
 
 ```bash
 devtunnel create hermes-bot --allow-anonymous
-devtunnel port create hermes-bot -p 3978 --protocol auto
+devtunnel port create hermes-bot -p 3978 --protocol https
 devtunnel host hermes-bot
 ```
 
-Copy the `https://` URL from the output — you'll use it in the next step.
+Copy the `https://` URL from the output — you'll use it in the next step. Leave this terminal running while developing.
+
+For production, point your bot's endpoint at your server's public domain instead (see [Production Deployment](#production-deployment)).
 
 ---
 
@@ -59,7 +59,7 @@ teams app create \
   --endpoint "https://<your-tunnel-url>/api/messages"
 ```
 
-The CLI outputs your `CLIENT_ID`, `CLIENT_SECRET`, and `TENANT_ID`. Save them.
+The CLI outputs your `CLIENT_ID`, `CLIENT_SECRET`, and `TENANT_ID`. Save them — you'll need all three.
 
 ---
 
@@ -68,28 +68,34 @@ The CLI outputs your `CLIENT_ID`, `CLIENT_SECRET`, and `TENANT_ID`. Save them.
 Add to `~/.hermes/.env`:
 
 ```bash
+# Required
 TEAMS_CLIENT_ID=<your-client-id>
 TEAMS_CLIENT_SECRET=<your-client-secret>
 TEAMS_TENANT_ID=<your-tenant-id>
 
-# Restrict access to your AAD object ID (from `teams status --verbose`)
+# Restrict access to specific users (recommended)
+# Use AAD object IDs from `teams status --verbose`
 TEAMS_ALLOWED_USERS=<your-aad-object-id>
 ```
 
 ---
 
-## Step 5: Run with Docker
+## Step 5: Start the Gateway
 
 ```bash
 HERMES_UID=$(id -u) HERMES_GID=$(id -g) docker compose up -d gateway
 ```
 
-The gateway listens on port 3978. With `network_mode: host`, no extra port mapping is needed.
-
-Check logs:
+This starts the gateway and maps port 3978 on your host to the container. Check that it's running:
 
 ```bash
+curl http://localhost:3978/health   # should return: ok
 docker logs -f hermes
+```
+
+Look for:
+```
+[teams] Webhook server listening on 0.0.0.0:3978/api/messages
 ```
 
 ---
@@ -100,22 +106,25 @@ docker logs -f hermes
 teams app install --id <teamsAppId>
 ```
 
-Then DM the bot in Teams — it's ready.
+The `teamsAppId` was printed by `teams app create` in Step 3. After installing, open Microsoft Teams and send a direct message to your bot — it's ready.
 
 ---
 
 ## Configuration Reference
+
+### Environment Variables
 
 | Variable | Description |
 |----------|-------------|
 | `TEAMS_CLIENT_ID` | Azure AD App (client) ID |
 | `TEAMS_CLIENT_SECRET` | Azure AD client secret |
 | `TEAMS_TENANT_ID` | Azure AD tenant ID |
-| `TEAMS_ALLOWED_USERS` | Comma-separated AAD object IDs |
-| `TEAMS_ALLOW_ALL_USERS` | Set `true` to skip the allowlist |
-| `TEAMS_HOME_CHANNEL` | Default channel/chat ID for cron delivery |
+| `TEAMS_ALLOWED_USERS` | Comma-separated AAD object IDs allowed to use the bot |
+| `TEAMS_HOME_CHANNEL` | Conversation ID for cron/proactive message delivery |
 | `TEAMS_HOME_CHANNEL_NAME` | Display name for the home channel |
 | `TEAMS_PORT` | Webhook port (default: `3978`) |
+
+### config.yaml
 
 Alternatively, configure via `~/.hermes/config.yaml`:
 
@@ -132,16 +141,68 @@ platforms:
 
 ---
 
+## Features
+
+### Interactive Approval Cards
+
+When the agent needs to run a potentially dangerous command, it sends an Adaptive Card with four buttons instead of asking you to type `/approve`:
+
+- **Allow Once** — approve this specific command
+- **Allow Session** — approve this pattern for the rest of the session
+- **Always Allow** — permanently approve this pattern
+- **Deny** — reject the command
+
+Clicking a button resolves the approval inline and replaces the card with the decision.
+
+### Image Attachments
+
+Images sent to the bot are automatically downloaded and passed to the agent as vision input.
+
+---
+
 ## Production Deployment
 
-For a permanent server, skip devtunnel and point the bot's messaging endpoint directly at your host:
+For a permanent server, skip devtunnel and register your bot with your server's public HTTPS endpoint:
 
-```
-https://your-domain.com/api/messages
+```bash
+teams app create \
+  --name "Hermes" \
+  --endpoint "https://your-domain.com/api/messages"
 ```
 
-Update the endpoint in the Teams CLI:
+If you've already created the bot and just need to update the endpoint:
 
 ```bash
 teams app update --id <teamsAppId> --endpoint "https://your-domain.com/api/messages"
 ```
+
+Make sure port 3978 (or your configured `TEAMS_PORT`) is reachable from the internet and that your TLS certificate is valid — Teams rejects self-signed certificates.
+
+---
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| `health` endpoint works but bot doesn't respond | Check that your devtunnel is still running and the bot's messaging endpoint matches the tunnel URL |
+| `KeyError: 'teams'` in logs | Restart the container — this is fixed in the current version |
+| Bot responds with auth errors | Verify `TEAMS_CLIENT_ID`, `TEAMS_CLIENT_SECRET`, and `TEAMS_TENANT_ID` are all set correctly |
+| `No inference provider configured` | Check that `ANTHROPIC_API_KEY` (or another provider key) is set in `~/.hermes/.env` |
+| Bot receives messages but ignores them | Your AAD object ID may not be in `TEAMS_ALLOWED_USERS`. Run `teams status --verbose` to find it |
+| Dev tunnel URL changes on restart | Devtunnel URLs are persistent if you created a named tunnel (`devtunnel create hermes-bot`). Re-run `devtunnel host hermes-bot` to reconnect |
+| Teams shows "This bot is not responding" | The webhook returned an error. Check `docker logs hermes` for tracebacks |
+| `[teams] Failed to connect` in logs | The SDK failed to authenticate. Double-check your credentials and that the tenant ID matches the account you used in `teams login` |
+
+---
+
+## Security
+
+:::warning
+**Always set `TEAMS_ALLOWED_USERS`** with the AAD object IDs of authorized users. Without this, anyone who can find or install your bot can interact with it.
+
+Treat `TEAMS_CLIENT_SECRET` like a password — rotate it periodically via the Azure portal or Teams CLI.
+:::
+
+- Store credentials in `~/.hermes/.env` with permissions `600` (`chmod 600 ~/.hermes/.env`)
+- The bot only accepts messages from users in `TEAMS_ALLOWED_USERS`; unauthorized messages are silently dropped
+- Your public endpoint (`/api/messages`) is authenticated by the Teams Bot Framework — requests without valid JWTs are rejected
