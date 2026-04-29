@@ -422,6 +422,13 @@ PLATFORM_HINTS = {
         "your response. Images are sent as native photos, and other files arrive as downloadable "
         "documents."
     ),
+    "teams": (
+        "You are in a Microsoft Teams conversation. Teams supports a subset of markdown: "
+        "**bold**, *italic*, ~~strikethrough~~, `inline code`, ```code blocks```, "
+        "[links](url), and numbered/bulleted lists. Tables and headers work in channel "
+        "posts but may not render in chat messages. Keep messages concise — Teams truncates "
+        "very long messages."
+    ),
 }
 
 # ---------------------------------------------------------------------------

@@ -314,6 +314,14 @@ For cloud sandbox backends, persistence is filesystem-oriented. `TERMINAL_LIFETI
 | `QQBOT_HOME_CHANNEL` | QQ user/group openID for cron delivery and notifications |
 | `QQBOT_HOME_CHANNEL_NAME` | Display name for the QQ home channel |
 | `QQ_SANDBOX` | Route QQ Bot to the sandbox gateway for development testing (`true`/`false`). Use with a sandbox app credential from [q.qq.com](https://q.qq.com). |
+| `TEAMS_CLIENT_ID` | Azure AD Application (Client) ID for Microsoft Teams bot |
+| `TEAMS_CLIENT_SECRET` | Azure AD Client Secret for Microsoft Teams bot |
+| `TEAMS_TENANT_ID` | Azure AD Tenant ID (required — single-tenant bots only) |
+| `TEAMS_PORT` | Webhook server port for Teams (default: `3978`) |
+| `TEAMS_ALLOWED_USERS` | Comma-separated AAD Object IDs allowed to message the bot |
+| `TEAMS_ALLOW_ALL_USERS` | Allow all users (`true`/`false`) |
+| `TEAMS_HOME_CHANNEL` | Conversation ID for cron delivery and notifications |
+| `TEAMS_HOME_CHANNEL_NAME` | Display name for the Teams home channel |
 | `MATTERMOST_URL` | Mattermost server URL (e.g. `https://mm.example.com`) |
 | `MATTERMOST_TOKEN` | Bot token or personal access token for Mattermost |
 | `MATTERMOST_ALLOWED_USERS` | Comma-separated Mattermost user IDs allowed to message the bot |

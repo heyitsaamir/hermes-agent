@@ -31,6 +31,7 @@ For the full voice feature set — including CLI microphone mode, spoken replies
 | Weixin | ✅ | ✅ | ✅ | — | — | ✅ | ✅ |
 | BlueBubbles | — | ✅ | ✅ | — | ✅ | ✅ | — |
 | QQ | ✅ | ✅ | ✅ | — | — | ✅ | — |
+| Microsoft Teams | — | ✅ | ✅ | ✅ | — | ✅ | ✅ |
 
 **Voice** = TTS audio replies and/or voice message transcription. **Images** = send/receive images. **Files** = send/receive file attachments. **Threads** = threaded conversations. **Reactions** = emoji reactions on messages. **Typing** = typing indicator while processing. **Streaming** = progressive message updates via editing.
 
@@ -383,6 +384,7 @@ Each platform has its own toolset:
 | Weixin | `hermes-weixin` | Full tools including terminal |
 | BlueBubbles | `hermes-bluebubbles` | Full tools including terminal |
 | QQBot | `hermes-qqbot` | Full tools including terminal |
+| Microsoft Teams | `hermes-teams` | Full tools including terminal |
 | API Server | `hermes` (default) | Full tools including terminal |
 | Webhooks | `hermes-webhook` | Full tools including terminal |
 
@@ -405,5 +407,6 @@ Each platform has its own toolset:
 - [Weixin Setup (WeChat)](weixin.md)
 - [BlueBubbles Setup (iMessage)](bluebubbles.md)
 - [QQBot Setup](qqbot.md)
+- [Microsoft Teams Setup](teams.md)
 - [Open WebUI + API Server](open-webui.md)
 - [Webhooks](webhooks.md)

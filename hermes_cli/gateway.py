@@ -2724,6 +2724,32 @@ _PLATFORMS = [
              "help": "OpenID to deliver cron results and notifications to."},
         ],
     },
+    {
+        "key": "teams",
+        "label": "Microsoft Teams",
+        "emoji": "👥",
+        "token_var": "TEAMS_CLIENT_ID",
+        "setup_instructions": [
+            "1. Install the Teams CLI: npm install -g @microsoft/teams.cli@preview",
+            "2. Log in: teams login",
+            "3. Create the app: teams app create --name \"Hermes\" --endpoint \"https://<your-url>/api/messages\"",
+            "4. The output shows CLIENT_ID, CLIENT_SECRET, and TENANT_ID — paste them below",
+            "5. Install the app in Teams using the install link from the output",
+        ],
+        "vars": [
+            {"name": "TEAMS_CLIENT_ID", "prompt": "Application (Client) ID", "password": False,
+             "help": "The CLIENT_ID from the teams app create output."},
+            {"name": "TEAMS_CLIENT_SECRET", "prompt": "Client Secret", "password": True,
+             "help": "The CLIENT_SECRET from the teams app create output."},
+            {"name": "TEAMS_TENANT_ID", "prompt": "Azure AD Tenant ID", "password": False,
+             "help": "The TENANT_ID from the teams app create output."},
+            {"name": "TEAMS_ALLOWED_USERS", "prompt": "Allowed user AAD Object IDs (comma-separated, leave empty for open access)", "password": False,
+             "is_allowlist": True,
+             "help": "Optional — restrict access to specific AAD Object IDs."},
+            {"name": "TEAMS_HOME_CHANNEL", "prompt": "Home conversation ID (for cron delivery, or empty)", "password": False,
+             "help": "Conversation ID for cron job and notification delivery."},
+        ],
+    },
 ]
 
 
