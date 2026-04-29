@@ -36,14 +36,21 @@ except ImportError:
 
 try:
     from microsoft_teams.apps import App, ActivityContext
-    from microsoft_teams.api import MessageActivity
+    from microsoft_teams.api import MessageActivity, ConversationReference
     from microsoft_teams.api.activities.typing import TypingActivityInput
+    from microsoft_teams.api.activities.invoke.adaptive_card import AdaptiveCardInvokeActivity
+    from microsoft_teams.api.models.adaptive_card import (
+        AdaptiveCardActionCardResponse,
+        AdaptiveCardActionMessageResponse,
+    )
+    from microsoft_teams.api.models.invoke_response import InvokeResponse, AdaptiveCardInvokeResponse
     from microsoft_teams.apps.http.adapter import (
         HttpMethod,
         HttpRequest,
         HttpResponse,
         HttpRouteHandler,
     )
+    from microsoft_teams.cards import AdaptiveCard, ExecuteAction, TextBlock
 
     TEAMS_SDK_AVAILABLE = True
 except ImportError:
@@ -51,11 +58,20 @@ except ImportError:
     App = None  # type: ignore[assignment,misc]
     ActivityContext = None  # type: ignore[assignment,misc]
     MessageActivity = None  # type: ignore[assignment,misc]
+    ConversationReference = None  # type: ignore[assignment,misc]
     TypingActivityInput = None  # type: ignore[assignment,misc]
+    AdaptiveCardInvokeActivity = None  # type: ignore[assignment,misc]
+    AdaptiveCardActionCardResponse = None  # type: ignore[assignment,misc]
+    AdaptiveCardActionMessageResponse = None  # type: ignore[assignment,misc]
+    AdaptiveCardInvokeResponse = None  # type: ignore[assignment,misc,union-attr]
+    InvokeResponse = None  # type: ignore[assignment,misc]
     HttpMethod = str  # type: ignore[assignment,misc]
     HttpRequest = None  # type: ignore[assignment,misc]
     HttpResponse = None  # type: ignore[assignment,misc]
     HttpRouteHandler = None  # type: ignore[assignment,misc]
+    AdaptiveCard = None  # type: ignore[assignment,misc]
+    ExecuteAction = None  # type: ignore[assignment,misc]
+    TextBlock = None  # type: ignore[assignment,misc]
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.helpers import MessageDeduplicator
@@ -142,6 +158,9 @@ class TeamsAdapter(BasePlatformAdapter):
         self._app: Optional["App"] = None
         self._runner: Optional["web.AppRunner"] = None
         self._dedup = MessageDeduplicator(max_size=1000)
+        # Maps chat_id → ConversationReference captured from incoming messages.
+        # Used to send cards with the correct conversation type (personal/group/channel).
+        self._conv_refs: Dict[str, Any] = {}
 
     async def connect(self) -> bool:
         if not TEAMS_SDK_AVAILABLE:
@@ -184,6 +203,12 @@ class TeamsAdapter(BasePlatformAdapter):
             @self._app.on_message
             async def _handle_message(ctx: ActivityContext[MessageActivity]):
                 await self._on_message(ctx)
+
+            @self._app.on_card_action
+            async def _handle_card_action(
+                ctx: ActivityContext[AdaptiveCardInvokeActivity],
+            ) -> InvokeResponse[AdaptiveCardActionMessageResponse]:
+                return await self._on_card_action(ctx)
 
             # initialize() calls register_route() on the bridge, which adds
             # POST /api/messages to aiohttp_app automatically
@@ -234,6 +259,11 @@ class TeamsAdapter(BasePlatformAdapter):
         msg_id = getattr(activity, "id", None)
         if msg_id and self._dedup.is_duplicate(msg_id):
             return
+
+        # Cache the conversation reference for proactive sends (approval cards, etc.)
+        conv_id = getattr(activity.conversation, "id", None)
+        if conv_id:
+            self._conv_refs[conv_id] = ctx.conversation_ref
 
         # Extract text — strip bot @mentions
         text = ""
@@ -296,6 +326,144 @@ class TeamsAdapter(BasePlatformAdapter):
             message_id=msg_id,
         )
         await self.handle_message(event)
+
+    async def _send_card(self, chat_id: str, card: "AdaptiveCard") -> "Any":
+        """Send an AdaptiveCard, using a stored ConversationReference when available."""
+        from microsoft_teams.api import MessageActivityInput
+
+        conv_ref = self._conv_refs.get(chat_id)
+        if conv_ref and self._app:
+            activity = MessageActivityInput().add_card(card)
+            return await self._app.activity_sender.send(activity, conv_ref)
+        elif self._app:
+            return await self._app.send(chat_id, card)
+        return None
+
+    async def _on_card_action(
+        self, ctx: "ActivityContext[AdaptiveCardInvokeActivity]"
+    ) -> "InvokeResponse[AdaptiveCardActionMessageResponse]":
+        """Handle an Adaptive Card Action.Execute button click."""
+        from tools.approval import resolve_gateway_approval, has_blocking_approval
+
+        action = ctx.activity.value.action
+        data = action.data or {}
+        hermes_action = data.get("hermes_action", "")
+        session_key = data.get("session_key", "")
+
+        if not hermes_action or not session_key:
+            return InvokeResponse(
+                status=200,
+                body=AdaptiveCardActionMessageResponse(value="Unknown action."),
+            )
+
+        # Only authorized users may click approval buttons.
+        allowed_csv = os.getenv("TEAMS_ALLOWED_USERS", "").strip()
+        if allowed_csv:
+            from_account = ctx.activity.from_
+            clicker_id = getattr(from_account, "aad_object_id", None) or getattr(from_account, "id", "")
+            allowed_ids = {uid.strip() for uid in allowed_csv.split(",") if uid.strip()}
+            if "*" not in allowed_ids and clicker_id not in allowed_ids:
+                logger.warning("[teams] Unauthorized card action by %s — ignoring", clicker_id)
+                return InvokeResponse(
+                    status=200,
+                    body=AdaptiveCardActionMessageResponse(value="⛔ Not authorized."),
+                )
+
+        choice_map = {
+            "approve_once": "once",
+            "approve_session": "session",
+            "approve_always": "always",
+            "deny": "deny",
+        }
+        choice = choice_map.get(hermes_action)
+        if not choice:
+            return InvokeResponse(
+                status=200,
+                body=AdaptiveCardActionMessageResponse(value="Unknown action."),
+            )
+
+        if not has_blocking_approval(session_key):
+            return InvokeResponse(
+                status=200,
+                body=AdaptiveCardActionCardResponse(
+                    value=AdaptiveCard()
+                    .with_version("1.4")
+                    .with_body([TextBlock(text="⚠️ Approval already resolved or expired.", wrap=True)])
+                ),
+            )
+
+        resolve_gateway_approval(session_key, choice)
+
+        label_map = {
+            "once": "✅ Allowed (once)",
+            "session": "✅ Allowed (session)",
+            "always": "✅ Always allowed",
+            "deny": "❌ Denied",
+        }
+        return InvokeResponse(
+            status=200,
+            body=AdaptiveCardActionCardResponse(
+                value=AdaptiveCard()
+                .with_version("1.4")
+                .with_body([TextBlock(text=label_map[choice], wrap=True, weight="Bolder")])
+            ),
+        )
+
+    async def send_exec_approval(
+        self,
+        chat_id: str,
+        command: str,
+        session_key: str,
+        description: str = "dangerous command",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> SendResult:
+        """Send an Adaptive Card approval prompt with Allow/Deny buttons."""
+        if not self._app:
+            return SendResult(success=False, error="Teams app not initialized")
+
+        cmd_preview = command[:2000] + "..." if len(command) > 2000 else command
+
+        card = (
+            AdaptiveCard()
+            .with_version("1.4")
+            .with_body([
+                TextBlock(text="⚠️ Command Approval Required", wrap=True, weight="Bolder"),
+                TextBlock(text=f"```\n{cmd_preview}\n```", wrap=True),
+                TextBlock(text=f"Reason: {description}", wrap=True, isSubtle=True),
+            ])
+            .with_actions([
+                ExecuteAction(
+                    title="Allow Once",
+                    verb="hermes_approve",
+                    data={"hermes_action": "approve_once", "session_key": session_key},
+                    style="positive",
+                ),
+                ExecuteAction(
+                    title="Allow Session",
+                    verb="hermes_approve",
+                    data={"hermes_action": "approve_session", "session_key": session_key},
+                ),
+                ExecuteAction(
+                    title="Always Allow",
+                    verb="hermes_approve",
+                    data={"hermes_action": "approve_always", "session_key": session_key},
+                ),
+                ExecuteAction(
+                    title="Deny",
+                    verb="hermes_approve",
+                    data={"hermes_action": "deny", "session_key": session_key},
+                    style="destructive",
+                ),
+            ])
+        )
+
+        try:
+            result = await self._send_card(chat_id, card)
+            message_id = getattr(result, "id", None) if result else None
+            return SendResult(success=True, message_id=message_id)
+        except Exception as e:
+            logger.error("[teams] send_exec_approval failed: %s", e, exc_info=True)
+            return SendResult(success=False, error=str(e), retryable=True)
 
     async def send(
         self,
