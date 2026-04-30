@@ -20,6 +20,8 @@ Configuration in config.yaml:
           port: 3978                        # or TEAMS_PORT env var
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging

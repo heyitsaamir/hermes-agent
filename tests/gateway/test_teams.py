@@ -26,6 +26,14 @@ def _ensure_teams_mock():
     microsoft_teams_api = types.ModuleType("microsoft_teams.api")
     microsoft_teams_api_activities = types.ModuleType("microsoft_teams.api.activities")
     microsoft_teams_api_activities_typing = types.ModuleType("microsoft_teams.api.activities.typing")
+    microsoft_teams_api_activities_invoke = types.ModuleType("microsoft_teams.api.activities.invoke")
+    microsoft_teams_api_activities_invoke_adaptive_card = types.ModuleType(
+        "microsoft_teams.api.activities.invoke.adaptive_card"
+    )
+    microsoft_teams_api_models = types.ModuleType("microsoft_teams.api.models")
+    microsoft_teams_api_models_adaptive_card = types.ModuleType("microsoft_teams.api.models.adaptive_card")
+    microsoft_teams_api_models_invoke_response = types.ModuleType("microsoft_teams.api.models.invoke_response")
+    microsoft_teams_cards = types.ModuleType("microsoft_teams.cards")
     microsoft_teams_apps_http = types.ModuleType("microsoft_teams.apps.http")
     microsoft_teams_apps_http_adapter = types.ModuleType("microsoft_teams.apps.http.adapter")
 
@@ -44,6 +52,10 @@ def _ensure_teams_mock():
 
         def on_message(self, func):
             self._message_handler = func
+            return func
+
+        def on_card_action(self, func):
+            self._card_action_handler = func
             return func
 
         async def initialize(self):
@@ -65,12 +77,45 @@ def _ensure_teams_mock():
 
     # MessageActivity mock
     microsoft_teams_api.MessageActivity = MagicMock
+    microsoft_teams_api.ConversationReference = MagicMock
+    microsoft_teams_api.MessageActivityInput = MagicMock
 
     # TypingActivityInput mock
     class MockTypingActivityInput:
         pass
 
     microsoft_teams_api_activities_typing.TypingActivityInput = MockTypingActivityInput
+
+    # Adaptive card invoke activity mock
+    microsoft_teams_api_activities_invoke_adaptive_card.AdaptiveCardInvokeActivity = MagicMock
+
+    # Adaptive card response mocks
+    microsoft_teams_api_models_adaptive_card.AdaptiveCardActionCardResponse = MagicMock
+    microsoft_teams_api_models_adaptive_card.AdaptiveCardActionMessageResponse = MagicMock
+
+    # Invoke response mocks
+    class MockInvokeResponse:
+        def __init__(self, status=200, body=None):
+            self.status = status
+            self.body = body
+
+    microsoft_teams_api_models_invoke_response.InvokeResponse = MockInvokeResponse
+    microsoft_teams_api_models_invoke_response.AdaptiveCardInvokeResponse = MagicMock
+
+    # Cards mocks
+    class MockAdaptiveCard:
+        def with_version(self, v):
+            return self
+
+        def with_body(self, body):
+            return self
+
+        def with_actions(self, actions):
+            return self
+
+    microsoft_teams_cards.AdaptiveCard = MockAdaptiveCard
+    microsoft_teams_cards.ExecuteAction = MagicMock
+    microsoft_teams_cards.TextBlock = MagicMock
 
     # HttpRequest TypedDict mock
     def HttpRequest(body=None, headers=None):
@@ -98,6 +143,12 @@ def _ensure_teams_mock():
         "microsoft_teams.api": microsoft_teams_api,
         "microsoft_teams.api.activities": microsoft_teams_api_activities,
         "microsoft_teams.api.activities.typing": microsoft_teams_api_activities_typing,
+        "microsoft_teams.api.activities.invoke": microsoft_teams_api_activities_invoke,
+        "microsoft_teams.api.activities.invoke.adaptive_card": microsoft_teams_api_activities_invoke_adaptive_card,
+        "microsoft_teams.api.models": microsoft_teams_api_models,
+        "microsoft_teams.api.models.adaptive_card": microsoft_teams_api_models_adaptive_card,
+        "microsoft_teams.api.models.invoke_response": microsoft_teams_api_models_invoke_response,
+        "microsoft_teams.cards": microsoft_teams_cards,
         "microsoft_teams.apps.http": microsoft_teams_apps_http,
         "microsoft_teams.apps.http.adapter": microsoft_teams_apps_http_adapter,
     }.items():
