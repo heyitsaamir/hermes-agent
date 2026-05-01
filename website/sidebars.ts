@@ -535,6 +535,7 @@ const sidebars: SidebarsConfig = {
         'user-guide/messaging/bluebubbles',
         'user-guide/messaging/qqbot',
         'user-guide/messaging/yuanbao',
+        'user-guide/messaging/teams',
         'user-guide/messaging/open-webui',
         'user-guide/messaging/webhooks',
       ],
